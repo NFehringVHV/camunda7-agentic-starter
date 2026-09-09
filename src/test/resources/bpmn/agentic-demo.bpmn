@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:camunda="http://camunda.org/schema/1.0/bpmn" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" id="Definitions_AgenticDemo" targetNamespace="http://camunda7agentic.github.io/agentic" exporter="Camunda Modeler" exporterVersion="5.43.1">
+  <bpmn:message id="Msg_getWeather" name="getWeather" />
+  <bpmn:message id="Msg_sendEmail" name="sendEmail" />
+  <bpmn:message id="Message_155vi7e" name="LLM-Result" />
+  <bpmn:collaboration id="Collaboration_0f1g2ms">
+    <bpmn:participant id="Participant_0kc4zex" name="agentic-demo" processRef="agentic-demo" />
+  </bpmn:collaboration>
+  <bpmn:process id="agentic-demo" name="Agentic Demo" isExecutable="true" camunda:historyTimeToLive="P30D">
+    <bpmn:startEvent id="StartEvent_Start" name="Start">
+      <bpmn:outgoing>Flow_Start_to_Llm</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:serviceTask id="Task_LlmAgentic" name="LLM Agentic" camunda:type="external" camunda:topic="llm-agentic">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="systemPromptUseCase">You are a helpful assistant. Answer concisely.</camunda:inputParameter>
+          <camunda:inputParameter name="toolCallVariableName">toolCall</camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Start_to_Llm</bpmn:incoming>
+      <bpmn:incoming>Flow_ToolResult_to_Llm</bpmn:incoming>
+      <bpmn:outgoing>Flow_Llm_to_Gateway</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:exclusiveGateway id="Gateway_Done" name="agenticDone?" default="Flow_Gw_to_CallTool">
+      <bpmn:incoming>Flow_Llm_to_Gateway</bpmn:incoming>
+      <bpmn:outgoing>Flow_Gw_to_End</bpmn:outgoing>
+      <bpmn:outgoing>Flow_Gw_to_CallTool</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:endEvent id="EndEvent_Done" name="Done">
+      <bpmn:incoming>Flow_Gw_to_End</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_Start_to_Llm" sourceRef="StartEvent_Start" targetRef="Task_LlmAgentic" />
+    <bpmn:sequenceFlow id="Flow_ToolResult_to_Llm" sourceRef="Receive_ToolResult" targetRef="Task_LlmAgentic" />
+    <bpmn:sequenceFlow id="Flow_Llm_to_Gateway" sourceRef="Task_LlmAgentic" targetRef="Gateway_Done" />
+    <bpmn:sequenceFlow id="Flow_Gw_to_End" sourceRef="Gateway_Done" targetRef="EndEvent_Done">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">${agenticDone == true}</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="Flow_Gw_to_CallTool" sourceRef="Gateway_Done" targetRef="Activity_0583vz5" />
+    <bpmn:sequenceFlow id="Flow_1f8mf1y" sourceRef="Activity_0583vz5" targetRef="Receive_ToolResult" />
+    <bpmn:intermediateCatchEvent id="Receive_ToolResult" name="Tool result" camunda:asyncBefore="true">
+      <bpmn:incoming>Flow_1f8mf1y</bpmn:incoming>
+      <bpmn:outgoing>Flow_ToolResult_to_Llm</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MsgDef_Receive" messageRef="Message_155vi7e" />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:serviceTask id="Activity_0583vz5" name="Call tool" camunda:asyncBefore="true" camunda:type="external" camunda:topic="agentic-tool-correlation">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:inputParameter name="toolCallVariableName">toolCall</camunda:inputParameter>
+        </camunda:inputOutput>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_Gw_to_CallTool</bpmn:incoming>
+      <bpmn:outgoing>Flow_1f8mf1y</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:subProcess id="Activity_1o2n3ok" name="Tool: sendEmail" triggeredByEvent="true">
+      <bpmn:documentation>Sends an email to a recipient with a subject and a body.</bpmn:documentation>
+      <bpmn:startEvent id="Event_1dmxcvf" isInterrupting="false" camunda:asyncBefore="true">
+        <bpmn:extensionElements>
+          <camunda:properties>
+            <camunda:property name="to" value="fromAi(&#34;toolCall.to&#34;, &#34;recipient email address&#34;)" />
+            <camunda:property name="subject" value="fromAi(&#34;toolCall.subject&#34;, &#34;email subject&#34;)" />
+            <camunda:property name="body" value="fromAi(&#34;toolCall.body&#34;, &#34;email body text&#34;)" />
+          </camunda:properties>
+        </bpmn:extensionElements>
+        <bpmn:outgoing>Flow_1dlwpiw</bpmn:outgoing>
+        <bpmn:messageEventDefinition id="MessageEventDefinition_08evzzs" messageRef="Msg_sendEmail" />
+      </bpmn:startEvent>
+      <bpmn:sequenceFlow id="Flow_1dlwpiw" sourceRef="Event_1dmxcvf" targetRef="Activity_0q8uboi" />
+      <bpmn:sequenceFlow id="Flow_0y3gf7n" sourceRef="Activity_0q8uboi" targetRef="Event_05r8gxf" />
+      <bpmn:endEvent id="Event_05r8gxf" name="LLM-Result">
+        <bpmn:incoming>Flow_0y3gf7n</bpmn:incoming>
+        <bpmn:messageEventDefinition id="MessageEventDefinition_1xcfotg" camunda:expression="${execution.processEngineServices.runtimeService.createMessageCorrelation(&#39;LLM-Result&#39;).processInstanceId(execution.processInstanceId).setVariable(&#39;toolCallResult&#39;, toolCallResult).correlate()}" />
+      </bpmn:endEvent>
+      <bpmn:serviceTask id="Activity_0q8uboi" name="Send email" camunda:delegateExpression="${sendEmailDelegate}">
+        <bpmn:incoming>Flow_1dlwpiw</bpmn:incoming>
+        <bpmn:outgoing>Flow_0y3gf7n</bpmn:outgoing>
+      </bpmn:serviceTask>
+    </bpmn:subProcess>
+    <bpmn:subProcess id="Activity_0pnuvic" name="Tool: getWeather" triggeredByEvent="true">
+      <bpmn:documentation>Returns the current weather for a location.</bpmn:documentation>
+      <bpmn:startEvent id="Event_1s1o62r" isInterrupting="false" camunda:asyncBefore="true">
+        <bpmn:extensionElements>
+          <camunda:properties>
+            <camunda:property name="location" value="fromAi(&#34;toolCall.location&#34;, &#34;Location to look up the weather for&#34;)" />
+          </camunda:properties>
+        </bpmn:extensionElements>
+        <bpmn:outgoing>Flow_0w55kz2</bpmn:outgoing>
+        <bpmn:messageEventDefinition id="MessageEventDefinition_0q9bx40" messageRef="Msg_getWeather" />
+      </bpmn:startEvent>
+      <bpmn:endEvent id="Event_1i3fa6w" name="LLM-Result">
+        <bpmn:incoming>Flow_0bagva0</bpmn:incoming>
+        <bpmn:messageEventDefinition id="MessageEventDefinition_0wrd2ky" camunda:expression="${execution.processEngineServices.runtimeService.createMessageCorrelation(&#39;LLM-Result&#39;).processInstanceId(execution.processInstanceId).setVariable(&#39;toolCallResult&#39;, toolCallResult).correlate()}" />
+      </bpmn:endEvent>
+      <bpmn:serviceTask id="Activity_0nm3vx8" name="Get weather" camunda:delegateExpression="${getWeatherDelegate}">
+        <bpmn:incoming>Flow_0w55kz2</bpmn:incoming>
+        <bpmn:outgoing>Flow_0bagva0</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:sequenceFlow id="Flow_0w55kz2" sourceRef="Event_1s1o62r" targetRef="Activity_0nm3vx8" />
+      <bpmn:sequenceFlow id="Flow_0bagva0" sourceRef="Activity_0nm3vx8" targetRef="Event_1i3fa6w" />
+    </bpmn:subProcess>
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_agentic-demo">
+    <bpmndi:BPMNPlane id="BPMNPlane_agentic-demo" bpmnElement="Collaboration_0f1g2ms">
+      <bpmndi:BPMNShape id="Participant_0kc4zex_di" bpmnElement="Participant_0kc4zex" isHorizontal="true">
+        <dc:Bounds x="151" y="80" width="679" height="790" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_StartEvent_Start" bpmnElement="StartEvent_Start">
+        <dc:Bounds x="202" y="202" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="208" y="238" width="25" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Task_LlmAgentic" bpmnElement="Task_LlmAgentic">
+        <dc:Bounds x="290" y="180" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Gateway_Done" bpmnElement="Gateway_Done" isMarkerVisible="true">
+        <dc:Bounds x="445" y="195" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="436" y="171" width="68" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_EndEvent_Done" bpmnElement="EndEvent_Done">
+        <dc:Bounds x="452" y="332" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="456" y="368" width="29" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Shape_Receive_ToolResult" bpmnElement="Receive_ToolResult">
+        <dc:Bounds x="732" y="202" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="717" y="238" width="67" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_1hs5k0r_di" bpmnElement="Activity_0583vz5">
+        <dc:Bounds x="560" y="180" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_08i65v7_di" bpmnElement="Activity_1o2n3ok" isExpanded="true">
+        <dc:Bounds x="320" y="640" width="350" height="200" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0m4e316_di" bpmnElement="Event_1dmxcvf">
+        <dc:Bounds x="360" y="722" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_00d4l0a_di" bpmnElement="Event_05r8gxf">
+        <dc:Bounds x="612" y="722" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="601" y="765" width="58" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_1w22yxg_di" bpmnElement="Activity_0q8uboi">
+        <dc:Bounds x="450" y="700" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_1dlwpiw_di" bpmnElement="Flow_1dlwpiw">
+        <di:waypoint x="396" y="740" />
+        <di:waypoint x="450" y="740" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0y3gf7n_di" bpmnElement="Flow_0y3gf7n">
+        <di:waypoint x="550" y="740" />
+        <di:waypoint x="612" y="740" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="BPMNShape_11z3fri" bpmnElement="Activity_0pnuvic" isExpanded="true">
+        <dc:Bounds x="320" y="400" width="350" height="200" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_02j5bj8" bpmnElement="Event_1s1o62r">
+        <dc:Bounds x="360" y="482" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_136luez" bpmnElement="Event_1i3fa6w">
+        <dc:Bounds x="612" y="482" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="601" y="525" width="58" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_1frlou3" bpmnElement="Activity_0nm3vx8">
+        <dc:Bounds x="450" y="460" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="BPMNEdge_0zbei7g" bpmnElement="Flow_0w55kz2">
+        <di:waypoint x="396" y="500" />
+        <di:waypoint x="450" y="500" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="BPMNEdge_0nk09ro" bpmnElement="Flow_0bagva0">
+        <di:waypoint x="550" y="500" />
+        <di:waypoint x="612" y="500" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Start_to_Llm" bpmnElement="Flow_Start_to_Llm">
+        <di:waypoint x="238" y="220" />
+        <di:waypoint x="290" y="220" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_ToolResult_to_Llm" bpmnElement="Flow_ToolResult_to_Llm">
+        <di:waypoint x="750" y="202" />
+        <di:waypoint x="750" y="140" />
+        <di:waypoint x="340" y="140" />
+        <di:waypoint x="340" y="180" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Llm_to_Gateway" bpmnElement="Flow_Llm_to_Gateway">
+        <di:waypoint x="390" y="220" />
+        <di:waypoint x="445" y="220" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Gw_to_End" bpmnElement="Flow_Gw_to_End">
+        <di:waypoint x="470" y="245" />
+        <di:waypoint x="470" y="332" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Edge_Flow_Gw_to_CallTool" bpmnElement="Flow_Gw_to_CallTool">
+        <di:waypoint x="495" y="220" />
+        <di:waypoint x="560" y="220" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1f8mf1y_di" bpmnElement="Flow_1f8mf1y">
+        <di:waypoint x="660" y="220" />
+        <di:waypoint x="732" y="220" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
