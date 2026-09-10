@@ -272,6 +272,21 @@ design discussions are welcome (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 - **Vector DB / RAG integration** — enrich the system prompt (or expose a `retrieve` tool) with
   context fetched from a vector store via Spring AI's `VectorStore` / retrieval-augmented-generation
   support, so the agent can ground its answers in your own documents.
+- **Revisit & document the prompt/history strategy** — the current behaviour (how much history is
+  sent to the model) is a hybrid controlled by three properties: `history-max-turns` (how many past
+  turns are included at all), `prompt-full-tool-result-turns` (for how many of the *most recent*
+  turns the full tool result is embedded) and `tool-call-result-max-chars` (per-result truncation).
+  This windowing logic should be thought through cleanly (token cost vs. loss of context, what
+  "a turn" means, interaction with the token budget) and documented in a dedicated section, so users
+  understand exactly what the LLM sees and why.
+- **UI / cockpit for agent runs** — a small viewer to inspect an agent run more comfortably:
+  the agent history (per-turn reasoning, tool calls, tool results), cumulative and per-turn token
+  usage, iteration count, and the abort reason. Could be a Camunda Cockpit plugin or a standalone
+  web view reading the history store / process variables.
+- **Freshness / TTL for tool-call results** — consider recording *when* each `toolCallResult` was
+  produced (timestamp per history entry), so the validity of an observation can be controlled: e.g.
+  mark or drop results older than X days/hours, or force a re-fetch of stale data before the model
+  relies on it. Useful for long-running processes where a cached tool answer may no longer be valid.
 
 ---
 
