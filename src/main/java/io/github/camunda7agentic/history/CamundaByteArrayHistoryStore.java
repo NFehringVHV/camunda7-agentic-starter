@@ -19,9 +19,9 @@ import java.util.Map;
  *
  * <p>The variable type is switchable via {@code agentic.c7.history.byte-array-type}:
  * <ul>
- *   <li>{@link ByteArrayType#BYTES} &ndash; a raw {@code byte[]} value. No extra dependency; in
+ *   <li>{@link ByteArrayType#BYTES} -- a raw {@code byte[]} value. No extra dependency; in
  *       Cockpit it appears as a downloadable binary.</li>
- *   <li>{@link ByteArrayType#JSON} &ndash; a SPIN {@code Json} value, human-readable in Cockpit.
+ *   <li>{@link ByteArrayType#JSON} -- a SPIN {@code Json} value, human-readable in Cockpit.
  *       Requires camunda-spin-dataformat-json(-jackson) on the worker classpath (resolved
  *       reflectively; fail-fast if missing).</li>
  * </ul>

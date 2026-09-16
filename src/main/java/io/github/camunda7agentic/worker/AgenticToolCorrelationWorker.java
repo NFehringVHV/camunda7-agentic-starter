@@ -14,7 +14,6 @@ import org.camunda.bpm.model.bpmn.Bpmn;
 import org.camunda.bpm.model.bpmn.BpmnModelInstance;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
@@ -30,7 +29,6 @@ import java.util.Map;
  * <p>Completes the external task afterwards. The downstream catch in the main flow keeps waiting for
  * {@code LLM-Result}.
  */
-@Component
 public class AgenticToolCorrelationWorker implements ExternalTaskHandler {
 
     private static final Logger log = LoggerFactory.getLogger(AgenticToolCorrelationWorker.class);
@@ -40,15 +38,18 @@ public class AgenticToolCorrelationWorker implements ExternalTaskHandler {
     private final ToolArgumentResolver argumentResolver;
     private final CamundaMessageCorrelator messageCorrelator;
     private final WorkerErrorHandler errorHandler;
+    private final TechnicalFailureHandler technicalFailureHandler;
 
     public AgenticToolCorrelationWorker(CamundaBpmnLoader bpmnLoader,
                                         ToolArgumentResolver argumentResolver,
                                         CamundaMessageCorrelator messageCorrelator,
-                                        WorkerErrorHandler errorHandler) {
+                                        WorkerErrorHandler errorHandler,
+                                        TechnicalFailureHandler technicalFailureHandler) {
         this.bpmnLoader = bpmnLoader;
         this.argumentResolver = argumentResolver;
         this.messageCorrelator = messageCorrelator;
         this.errorHandler = errorHandler;
+        this.technicalFailureHandler = technicalFailureHandler;
     }
 
     @Override
@@ -78,8 +79,7 @@ public class AgenticToolCorrelationWorker implements ExternalTaskHandler {
             service.complete(task);
 
         } catch (RuntimeException ex) {
-            log.error("agentic-tool-correlation error: task={}", task.getId(), ex);
-            service.handleFailure(task, ex.getMessage(), TaskVariables.stackTrace(ex), 0, 0L);
+            technicalFailureHandler.handleTechnicalFailure(service, task, "agentic-tool-correlation", ex);
         }
     }
 }

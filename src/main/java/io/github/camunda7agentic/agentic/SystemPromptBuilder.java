@@ -5,9 +5,7 @@
 package io.github.camunda7agentic.agentic;
 
 import tools.jackson.databind.ObjectMapper;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
-import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -20,14 +18,13 @@ import java.util.stream.Collectors;
  * + optional use-case enrichment (BPMN service-task input)
  * + dynamic tool list extracted from the BPMN model.
  */
-@Component
 public class SystemPromptBuilder {
 
     private final ObjectMapper objectMapper;
     private final String defaultPrompt;
 
     public SystemPromptBuilder(ObjectMapper objectMapper,
-                               @Value("classpath:prompts/default-system-prompt.txt") Resource defaultPromptResource) {
+                               Resource defaultPromptResource) {
         this.objectMapper = objectMapper;
         try {
             this.defaultPrompt = defaultPromptResource.getContentAsString(StandardCharsets.UTF_8);

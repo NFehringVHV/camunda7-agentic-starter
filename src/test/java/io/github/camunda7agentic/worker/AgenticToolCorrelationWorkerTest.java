@@ -9,6 +9,7 @@ import io.github.camunda7agentic.camunda.CamundaMessageCorrelator;
 import io.github.camunda7agentic.agentic.ToolArgumentResolver;
 import io.github.camunda7agentic.config.AgenticProperties;
 import io.github.camunda7agentic.config.BusinessErrorMode;
+import io.github.camunda7agentic.config.ExternalTaskClientProperties;
 import org.camunda.bpm.client.task.ExternalTask;
 import org.camunda.bpm.client.task.ExternalTaskService;
 import org.camunda.bpm.model.bpmn.BpmnModelInstance;
@@ -39,7 +40,14 @@ class AgenticToolCorrelationWorkerTest {
     private AgenticToolCorrelationWorker workerWith(BusinessErrorMode mode) {
         AgenticProperties props = new AgenticProperties("toolCall", 20, 8000, 10, 0L, 2, mode);
         return new AgenticToolCorrelationWorker(
-                bpmnLoader, argumentResolver, messageCorrelator, new WorkerErrorHandler(props));
+                bpmnLoader, argumentResolver, messageCorrelator, new WorkerErrorHandler(props),
+                new TechnicalFailureHandler(defaultClientProps()));
+    }
+
+    private static ExternalTaskClientProperties defaultClientProps() {
+        return new ExternalTaskClientProperties(
+                "http://localhost:8080/engine-rest", null, 30000L, 10, 20000L,
+                "llm-agentic", "agentic-tool-correlation", 300000L, null, null, true, 3, 30000L);
     }
 
     /** Minimal BPMN with a message start event in an event sub-process - enough for parsing. */

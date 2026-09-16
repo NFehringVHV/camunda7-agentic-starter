@@ -9,7 +9,7 @@ import org.springframework.ai.chat.metadata.Usage;
 
 /**
  * Broken-down token usage of an LLM call: total, input (prompt) and output (completion).
- * Null-safe &ndash; missing values are treated as {@code 0} (e.g. when the model returns no usage
+ * Null-safe -- missing values are treated as {@code 0} (e.g. when the model returns no usage
  * metadata).
  *
  * @param total  total number of tokens (prompt + completion).

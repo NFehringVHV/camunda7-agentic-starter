@@ -6,7 +6,6 @@ package io.github.camunda7agentic.camunda;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
@@ -17,8 +16,13 @@ import java.util.Map;
 /**
  * Sends a message correlation to the Camunda 7 REST API ({@code POST /message}). Values are wrapped
  * into the Camunda variable format {@code { "value": <v>, "type": "<t>" }}.
+ *
+ * <p><b>Open point (D6):</b> resolved tool arguments are written at <em>process-instance</em> scope.
+ * Argument names come from the BPMN ({@code camunda:property name}), not the LLM, but a name in the
+ * reserved {@code agentic*}/{@code toolCall*} namespace would overwrite loop-control variables; and
+ * the <em>values</em> are model-controlled and flow unfiltered into downstream delegates/expressions.
+ * Treat tool arguments as untrusted input in your delegates. No guard/filter is applied here yet.
  */
-@Component
 public class CamundaMessageCorrelator {
 
     private static final Logger log = LoggerFactory.getLogger(CamundaMessageCorrelator.class);

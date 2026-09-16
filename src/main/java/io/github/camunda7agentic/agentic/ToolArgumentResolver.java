@@ -14,7 +14,6 @@ import org.camunda.bpm.model.bpmn.instance.camunda.CamundaProperties;
 import org.camunda.bpm.model.bpmn.instance.camunda.CamundaProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -36,12 +35,11 @@ import java.util.regex.Pattern;
  * if the LLM omits an argument in a later iteration.</p>
  *
  * <p>Therefore <strong>every {@code fromAi} argument declared on the start event is written to the
- * result map deterministically</strong> &ndash; either with the value provided by the LLM or as
+ * result map deterministically</strong> -- either with the value provided by the LLM or as
  * {@code null} (which {@link CamundaMessageCorrelator} correlates as the typed value
  * {@code "Null"}). This way each tool iteration fully overwrites the variable state of the previous
  * iterations.</p>
  */
-@Component
 public class ToolArgumentResolver {
 
     private static final Logger log = LoggerFactory.getLogger(ToolArgumentResolver.class);

@@ -99,4 +99,18 @@ class JsonResponseSanitizerTest {
         assertThat(JsonResponseSanitizer.extractJson("{\"body\":\"a } b { c\"}"))
                 .isEqualTo("{\"body\":\"a } b { c\"}");
     }
+
+    @Test
+    void validJsonWithFencedContentIsNotMangled() {
+        String json = "{\"agenticDone\":true,\"reasoning\":\"r\","
+                + "\"finalAnswer\":\"Run this:\\n```bash\\nls -la\\n```\\nDone.\"}";
+        assertThat(JsonResponseSanitizer.extractJson(json)).isEqualTo(json);
+    }
+
+    @Test
+    void fencedWrapperAroundJsonWithFencedContentKeepsInnerObject() {
+        String inner = "{\"finalAnswer\":\"```bash\\nls\\n```\"}";
+        String wrapped = "```json\n" + inner + "\n```";
+        assertThat(JsonResponseSanitizer.extractJson(wrapped)).isEqualTo(inner);
+    }
 }

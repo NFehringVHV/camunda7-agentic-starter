@@ -18,7 +18,7 @@
     <packaging>jar</packaging>
     <name>camunda7-agentic-starter</name>
     <description>Vendor-neutral Spring Boot starter for agentic LLM tool-loops on Camunda 7 external tasks.</description>
-    <url>https://github.com/camunda7-agentic/camunda7-agentic-starter</url>
+    <url>https://github.com/NFehringVHV/camunda7-agentic-starter</url>
 
     <licenses>
         <license>
@@ -103,11 +103,30 @@
             <artifactId>spring-boot-configuration-processor</artifactId>
             <optional>true</optional>
         </dependency>
+        <!-- Auto-configuration ordering/condition metadata generation
+             (META-INF/spring-autoconfigure-metadata.properties): lets Spring Boot read this
+             starter's @AutoConfigureAfter / @ConditionalOnClass hints from generated metadata
+             instead of inspecting the class at startup. Recommended for auto-configuration
+             libraries. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure-processor</artifactId>
+            <optional>true</optional>
+        </dependency>
 
         <!-- Test -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- Test-only: a real Spring AI provider auto-config, used to reproduce the auto-config
+             ordering scenario (a ChatModel contributed by a provider auto-config) so the
+             @AutoConfigureAfter ordering fix is regression-tested. Not a runtime dependency: the
+             starter stays vendor-neutral. -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-bedrock-converse</artifactId>
             <scope>test</scope>
         </dependency>
     </dependencies>

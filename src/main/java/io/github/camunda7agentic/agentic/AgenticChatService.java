@@ -17,7 +17,6 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
-import org.springframework.stereotype.Component;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
@@ -31,11 +30,10 @@ import java.util.List;
  *
  * <p>This service is deliberately vendor-neutral: it only depends on the portable Spring AI
  * {@link ChatModel} abstraction. Bring your own model implementation (OpenAI, Bedrock, Ollama, ...)
- * by putting the corresponding Spring AI starter on the classpath &ndash; no code change required.
+ * by putting the corresponding Spring AI starter on the classpath -- no code change required.
  * Per-call {@code model}/{@code temperature} overrides are applied through the portable
  * {@link ChatOptions}.
  */
-@Component
 public class AgenticChatService {
 
     private static final Logger log = LoggerFactory.getLogger(AgenticChatService.class);
@@ -113,6 +111,8 @@ public class AgenticChatService {
         try {
             return objectMapper.readValue(json, AgenticOutput.class);
         } catch (JacksonException e) {
+            // Open point (D7): logs the raw LLM response at WARN, which may contain PII/business
+            // payload. Left as-is for now; lower to debug or truncate if that matters in your context.
             log.warn("LLM response is not valid JSON. Raw=\n{}", raw);
             throw new IllegalStateException("LLM returned invalid JSON: " + e.getOriginalMessage(), e);
         }

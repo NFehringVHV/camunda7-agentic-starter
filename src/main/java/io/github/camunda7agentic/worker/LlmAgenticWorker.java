@@ -20,7 +20,6 @@ import org.camunda.bpm.client.task.ExternalTaskHandler;
 import org.camunda.bpm.client.task.ExternalTaskService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
 import java.util.List;
@@ -39,7 +38,6 @@ import java.util.Map;
  * blob ids ({@code userPromptBlobId}, {@code systemPromptUseCaseBlobId}, {@code toolCallResultBlobId})
  * resolved through an optional {@code AgenticBlobStore} SPI bean.
  */
-@Component
 public class LlmAgenticWorker implements ExternalTaskHandler {
 
     private static final Logger log = LoggerFactory.getLogger(LlmAgenticWorker.class);
@@ -65,6 +63,7 @@ public class LlmAgenticWorker implements ExternalTaskHandler {
     private final BlobResolver blobResolver;
     private final HistoryStoreSelector historyStoreSelector;
     private final WorkerErrorHandler errorHandler;
+    private final TechnicalFailureHandler technicalFailureHandler;
     private final AgenticProperties props;
 
     public LlmAgenticWorker(CamundaBpmnLoader bpmnLoader,
@@ -74,6 +73,7 @@ public class LlmAgenticWorker implements ExternalTaskHandler {
                             BlobResolver blobResolver,
                             HistoryStoreSelector historyStoreSelector,
                             WorkerErrorHandler errorHandler,
+                            TechnicalFailureHandler technicalFailureHandler,
                             AgenticProperties props) {
         this.bpmnLoader = bpmnLoader;
         this.toolExtractor = toolExtractor;
@@ -82,6 +82,7 @@ public class LlmAgenticWorker implements ExternalTaskHandler {
         this.blobResolver = blobResolver;
         this.historyStoreSelector = historyStoreSelector;
         this.errorHandler = errorHandler;
+        this.technicalFailureHandler = technicalFailureHandler;
         this.props = props;
     }
 
@@ -90,8 +91,7 @@ public class LlmAgenticWorker implements ExternalTaskHandler {
         try {
             executeTurn(task, service);
         } catch (RuntimeException ex) {
-            log.error("llm-agentic error: task={}", task.getId(), ex);
-            service.handleFailure(task, ex.getMessage(), TaskVariables.stackTrace(ex), 0, 0L);
+            technicalFailureHandler.handleTechnicalFailure(service, task, "llm-agentic", ex);
         }
     }
 
@@ -146,7 +146,6 @@ public class LlmAgenticWorker implements ExternalTaskHandler {
         Map<String, Object> vars = new HashMap<>();
         vars.put(VAR_AGENTIC_DONE, output.agenticDone());
         vars.put("agenticReasoning", output.reasoning());
-        historyStore.persist(task, history, vars);
         vars.put(VAR_AGENTIC_ITERATION, iteration);
         vars.put(VAR_AGENTIC_TOKENS_USED, tokensUsed);
         vars.put(VAR_AGENTIC_INPUT_TOKENS_USED, inputTokensUsed);
@@ -163,6 +162,9 @@ public class LlmAgenticWorker implements ExternalTaskHandler {
         vars.put(VAR_TOOL_CALL_RESULT_BLOB_ID, null);
 
         if (applyPostCheckAbort(task, vars, limits, output, iteration, tokensUsed)) {
+            // Persist only on the success path (immediately before completing the task) so a retry
+            // after a later failure does not re-append this turn to a durable (external) history.
+            historyStore.persist(task, history, vars);
             service.complete(task, vars);
             return;
         }
@@ -171,6 +173,7 @@ public class LlmAgenticWorker implements ExternalTaskHandler {
             return;
         }
 
+        historyStore.persist(task, history, vars);
         service.complete(task, vars);
     }
 

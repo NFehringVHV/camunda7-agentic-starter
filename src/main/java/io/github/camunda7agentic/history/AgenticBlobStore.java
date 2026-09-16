@@ -10,7 +10,7 @@ package io.github.camunda7agentic.history;
  *
  * <p>The starter ships <strong>no</strong> implementation of this interface. To use the
  * {@code external} history mode (or blob-backed prompts/tool results), provide your own
- * {@code @Bean} implementing this SPI &ndash; e.g. backed by S3, a database, or a REST blob
+ * {@code @Bean} implementing this SPI -- e.g. backed by S3, a database, or a REST blob
  * service. A user-provided bean automatically activates the {@code external} history store.
  *
  * <p>Reference implementation sketch (S3) is documented in the project README.

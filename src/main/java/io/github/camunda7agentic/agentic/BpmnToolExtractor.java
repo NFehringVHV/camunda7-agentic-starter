@@ -15,7 +15,6 @@ import org.camunda.bpm.model.bpmn.instance.StartEvent;
 import org.camunda.bpm.model.bpmn.instance.SubProcess;
 import org.camunda.bpm.model.bpmn.instance.camunda.CamundaProperties;
 import org.camunda.bpm.model.bpmn.instance.camunda.CamundaProperty;
-import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
@@ -39,7 +38,6 @@ import java.util.regex.Pattern;
  *       value matches {@code fromAi("<toolCallVar>.<arg>", "<description>")}.</li>
  * </ul>
  */
-@Component
 public class BpmnToolExtractor {
 
     /** Captures the argument path (group 1) and the description (group 2). */

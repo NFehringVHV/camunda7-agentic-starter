@@ -6,6 +6,7 @@ package io.github.camunda7agentic.history;
 
 import io.github.camunda7agentic.agentic.AgenticHistoryCodec;
 import io.github.camunda7agentic.agentic.AgenticHistoryEntry;
+import io.github.camunda7agentic.config.HistoryReadErrorMode;
 import org.camunda.bpm.client.task.ExternalTask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,10 +28,13 @@ public class ExternalBlobHistoryStore implements AgenticHistoryStore {
 
     private final AgenticBlobStore blobStore;
     private final AgenticHistoryCodec codec;
+    private final HistoryReadErrorMode onReadError;
 
-    public ExternalBlobHistoryStore(AgenticBlobStore blobStore, AgenticHistoryCodec codec) {
+    public ExternalBlobHistoryStore(AgenticBlobStore blobStore, AgenticHistoryCodec codec,
+                                    HistoryReadErrorMode onReadError) {
         this.blobStore = blobStore;
         this.codec = codec;
+        this.onReadError = onReadError;
     }
 
     @Override
@@ -44,14 +48,25 @@ public class ExternalBlobHistoryStore implements AgenticHistoryStore {
         if (blobId == null || blobId.isBlank()) {
             return new ArrayList<>();
         }
+        byte[] bytes;
         try {
-            byte[] bytes = blobStore.read(blobId);
-            String json = bytes == null ? null : new String(bytes, StandardCharsets.UTF_8);
-            return codec.read(json);
+            bytes = blobStore.read(blobId);
+        } catch (HistoryUnreadableException ex) {
+            throw ex;
         } catch (RuntimeException ex) {
-            log.warn("history blob not readable (id={}), starting with an empty history.", blobId, ex);
-            return new ArrayList<>();
+            // A present blob id whose content cannot be fetched is a real read failure, never
+            // "no history yet". Do NOT return empty here: the next persist would overwrite the
+            // (recoverable) blob and destroy the conversation.
+            if (onReadError == HistoryReadErrorMode.RESET) {
+                log.warn("history blob not readable (id={}), starting with an empty history "
+                        + "(on-read-error=reset).", blobId, ex);
+                return new ArrayList<>();
+            }
+            throw new HistoryUnreadableException("history blob not readable (id=" + blobId + ")", ex);
         }
+        String json = bytes == null ? null : new String(bytes, StandardCharsets.UTF_8);
+        // Parse errors are surfaced by the codec according to the same policy.
+        return codec.read(json);
     }
 
     @Override

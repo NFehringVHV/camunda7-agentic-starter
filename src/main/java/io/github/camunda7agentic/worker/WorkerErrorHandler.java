@@ -8,18 +8,17 @@ import io.github.camunda7agentic.config.AgenticProperties;
 import io.github.camunda7agentic.config.BusinessErrorMode;
 import org.camunda.bpm.client.task.ExternalTask;
 import org.camunda.bpm.client.task.ExternalTaskService;
-import org.springframework.stereotype.Component;
 
 /**
  * Surfaces <em>business-level</em> worker failures according to the configured
  * {@link BusinessErrorMode}.
  *
  * <ul>
- *   <li>{@link BusinessErrorMode#INCIDENT} (default) &ndash; report via
+ *   <li>{@link BusinessErrorMode#INCIDENT} (default) -- report via
  *       {@link ExternalTaskService#handleFailure} with {@code retries = 0}, so Camunda creates an
  *       incident immediately. The error code is prefixed onto the incident message for traceability.
  *       No BPMN modelling is required.</li>
- *   <li>{@link BusinessErrorMode#BPMN_ERROR} &ndash; raise a BPMN error via
+ *   <li>{@link BusinessErrorMode#BPMN_ERROR} -- raise a BPMN error via
  *       {@link AgenticBpmnErrors} so the process can catch it on a boundary/event sub-process error
  *       event.</li>
  * </ul>
@@ -27,7 +26,6 @@ import org.springframework.stereotype.Component;
  * <p>Technical failures (LLM/engine/blob-store exceptions) are handled directly by the workers via
  * {@code handleFailure} and never go through this class.
  */
-@Component
 public class WorkerErrorHandler {
 
     private final BusinessErrorMode mode;

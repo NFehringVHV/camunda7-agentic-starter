@@ -10,7 +10,7 @@ the loop repeats until the model produces a final answer or a budget is exhauste
 
 It is **provider-neutral**: the starter depends only on the generic Spring AI `ChatModel` API. You
 bring your own model by adding any Spring AI model starter (OpenAI, Azure, AWS Bedrock, Ollama, …)
-to your application — see [`camunda7-agentic-examples`](../camunda7-agentic-examples) for a runnable
+to your application — see [`camunda7-agentic-examples`](https://github.com/NFehringVHV/camunda7-agentic-examples) for a runnable
 AWS Bedrock worker and a matching Camunda 7 process app.
 
 > **License:** Apache-2.0. **Status:** early (`0.x`) — APIs may still change.
@@ -83,14 +83,23 @@ All properties use the `agentic.c7` prefix.
 
 | Property | Default | Description |
 | --- | --- | --- |
+| `agentic.c7.enabled` | `true` | Master switch for the whole starter auto-configuration. Set to `false` to disable all agentic beans and subscriptions. |
 | `agentic.c7.client.base-url` | `http://localhost:8080/engine-rest` | REST endpoint the external-task client fetches from. |
 | `agentic.c7.client.username` / `.password` | – | Optional basic auth for fetch-and-lock. |
 | `agentic.c7.client.enabled` | `true` | Start the subscriptions. |
 | `agentic.c7.client.agentic-topic` | `llm-agentic` | Topic of the agentic turn worker. |
 | `agentic.c7.client.tool-correlation-topic` | `agentic-tool-correlation` | Topic of the tool-correlation worker. |
 | `agentic.c7.client.agentic-min-lock-ms` | `300000` | Minimum lock for the (slow) LLM topic. |
+| `agentic.c7.client.max-tasks` | `2` | Tasks fetched **and locked** per cycle. The client processes them *sequentially*, so keep `lock ≥ max-tasks × expected LLM duration` — otherwise the last task's lock can expire before it is processed and the same turn runs twice. Kept low on purpose. |
+| `agentic.c7.client.lock-duration-ms` | `30000` | Base lock duration; the agentic topic uses `max(lock-duration-ms, agentic-min-lock-ms)`. |
+| `agentic.c7.client.async-response-timeout-ms` | `20000` | Long-polling (fetch-and-lock) timeout. |
+| `agentic.c7.client.worker-id` | – | Optional external-task worker id; auto-generated when blank. |
+| `agentic.c7.client.technical-retries` | `3` | Automatic retries for *transient* technical failures (provider throttling/`429`, `5xx`, connection resets, engine restart, correlation races) before an incident is raised. `0` = fail immediately. Deterministic parse failures are never retried. |
+| `agentic.c7.client.technical-retry-timeout-ms` | `30000` | Backoff between technical retries. |
 | `agentic.c7.camunda.base-url` | `http://localhost:8080/engine-rest` | REST endpoint used to load BPMN XML and correlate tool messages. |
 | `agentic.c7.camunda.username` / `.password` / `.bearer-token` | – | Optional auth for those REST calls. |
+| `agentic.c7.camunda.connect-timeout-ms` | `5000` | Connection timeout for the Camunda REST calls. |
+| `agentic.c7.camunda.read-timeout-ms` | `10000` | Read timeout for the Camunda REST calls. A finite read timeout prevents a hung engine from blocking the single-threaded external-task client indefinitely. |
 
 ### Behaviour
 
@@ -131,16 +140,44 @@ with `agentic.c7.history.store`:
 > human-readable in Cockpit and your engine already has camunda-spin. Switch to `inline` only for
 > very small demos.
 
+**Read-error handling (`agentic.c7.history.on-read-error`).** When an *existing* history cannot be
+read or parsed (a transient blob-store outage, a malformed byte, an incompatible wire format), the
+starter must decide between failing loudly and silently continuing empty. A *missing* history
+(no variable/blob yet) is never an error and always yields an empty history.
+
+- `fail` **(default)** — propagate the failure so it becomes a technical failure (retry, then
+  incident). This prevents the dangerous sequence where the history is silently reset to empty and
+  then **overwritten** on the next persist, permanently destroying the conversation. For the
+  `external` store the unreadable blob is left untouched.
+- `reset` — log a warning and continue with an empty history. Only choose this if losing the prior
+  conversation on an unreadable history is acceptable; for `external` the previously unreadable blob
+  will be overwritten on the next persist.
+
 **Bring your own store (`external`).** Implement the `AgenticBlobStore` SPI and publish it as a
-Spring bean; it automatically replaces the built-in default. Selecting `store: external` **without**
-such a bean fails fast at startup.
+Spring bean. This does **not** change the default (`camunda-bytearray`) on its own &ndash; it makes
+the `external` store *available*; it becomes active only once you set
+`agentic.c7.history.store: external`. Selecting `store: external` **without** such a bean fails fast
+at startup.
+
+The SPI is byte-oriented and keyed, so history can be updated in place under a deterministic,
+per-process-instance id:
 
 ```java
 @Bean
-AgenticBlobStore s3BlobStore(S3Client s3) {
+AgenticBlobStore s3BlobStore(S3Client s3, S3Properties s3Props) {
     return new AgenticBlobStore() {
-        @Override public String write(String content) { /* PUT, return an id/key */ }
-        @Override public String read(String id)       { /* GET by id/key */ }
+        @Override
+        public byte[] read(String blobId) {
+            // GET by id; return null if the object does not exist / is empty.
+            return s3.getObjectAsBytes(b -> b.bucket(s3Props.bucket()).key(blobId)).asByteArray();
+        }
+
+        @Override
+        public String writeOrUpdate(String blobId, String processInstanceId, byte[] data, String metadata) {
+            // PUT (create or overwrite) under the stable blobId; return the id you stored under.
+            s3.putObject(b -> b.bucket(s3Props.bucket()).key(blobId), RequestBody.fromBytes(data));
+            return blobId;
+        }
     };
 }
 ```
@@ -183,6 +220,34 @@ discover tools by scanning the deployed BPMN; no separate registration is needed
 </bpmn:subProcess>
 ```
 
+> **Known limitation — correlation timing (open point).** A tool runs as a parallel
+> (non-interrupting) event sub-process and signals its result back to the main flow via the
+> `LLM-Result` message catch. The `agentic-tool-correlation` worker *correlates* (starts) the tool
+> and then *completes* the calling task, after which the main flow reaches the catch. If a tool
+> finishes and throws `LLM-Result` **before** the main flow is parked at the catch, correlation fails
+> (`MismatchingMessageCorrelationException`) — a transient error that is retried.
+>
+> Note that a *slow* tool does **not** help if it runs as a synchronous `JavaDelegate`: Camunda jobs
+> of the same process instance are **exclusive** by default, so the tool's job holds the instance
+> while it works and the receive-subscribe continuation cannot run until the delegate returns — a
+> `Thread.sleep` inside the delegate makes things *worse* (the tool job even re-executes the delegate
+> on every correlation retry). The fix is to insert a **wait state** between the tool work and the
+> `LLM-Result` end event: the example tools use a **timer intermediate catch event** (`PT2S`) for
+> this. A timer is a wait state — it commits the transaction and *releases* the exclusive lock, so
+> the receive-subscribe job (created earlier, at task completion) runs and subscribes the catch while
+> the timer is ticking. By the time the tool correlates `LLM-Result`, the catch is already parked.
+> This commits the tool delegate exactly once and practically eliminates the mismatch.
+>
+> In real-world use cases the tool sub-process usually contains its **own external task** (or another
+> async wait state) rather than a synchronous delegate. Such a wait state commits and releases the
+> exclusive lock while it waits for its worker, so the main flow reaches the catch in the meantime and
+> the race rarely materialises — the explicit demo timer is only needed for the fully-synchronous
+> delegate topology.
+>
+> A **fully** race-free BPMN would split the catch and the tool-call onto a **parallel gateway** (so
+> the catch parks synchronously *before* the tool worker runs), at the cost of a busier diagram. This
+> project keeps the simpler, more readable topology on purpose.
+
 ---
 
 ## Process contract
@@ -206,9 +271,12 @@ discover tools by scanning the deployed BPMN; no separate registration is needed
 | --- | --- |
 | `agenticDone` | `true` when the loop finished — use it on the gateway after the `llm-agentic` task. |
 | `agenticFinalAnswer` | The model's final answer. |
-| `agenticAbortReason` | Set when the loop stopped due to a budget/limit. |
+| `agenticNextMessage` | Name of the tool message the LLM chose for the current turn (drives the `agentic-tool-correlation` worker). |
+| `agenticAbortReason` | Set when the loop stopped due to a budget/limit (`max-iterations-exceeded`, `max-tokens-exceeded`). |
 | `agenticIteration`, `agenticTokensUsed`, `agenticInputTokensUsed`, `agenticOutputTokensUsed` | Running counters. |
+| `agenticTokensLastTurn`, `agenticInputTokensLastTurn`, `agenticOutputTokensLastTurn` | Token usage of the most recent turn only. |
 | `agenticReasoning`, `agenticNextStepPlan` | Diagnostics for the last turn. |
+| `agenticWorkerErrorCode`, `agenticWorkerErrorMessage`, `agenticWorkerErrorTopic`, `agenticWorkerErrorWorkerId`, `agenticWorkerErrorTime` | Written when a worker raises a BPMN error (`business-error-mode: bpmn-error`); they survive independently of the error catch for diagnostics. |
 | `agenticHistory` | The serialized conversation/tool-result history, when `store` is `inline` (String) or `camunda-bytearray` (`Bytes`/`Json`). |
 | `agenticHistoryBlobId` | Stable id of the externally stored history, when `store` is `external`. |
 
@@ -216,9 +284,14 @@ discover tools by scanning the deployed BPMN; no separate registration is needed
 
 The workers distinguish **technical** from **business** failures:
 
-- **Technical failures** (LLM call, Camunda REST, blob store throwing an exception) are always
-  reported via `handleFailure` with `retries = 0`, i.e. they become a Camunda **incident**
-  immediately. Retrying the same task would not help, and an operator should see it.
+- **Technical failures** (LLM call, Camunda REST, blob store throwing an exception) are retried
+  automatically when they look *transient* (provider throttling/`429`, `5xx`, connection resets, a
+  rolling engine restart, or a message-correlation race). They are reported via `handleFailure`
+  with a decrementing retry count (`agentic.c7.client.technical-retries`, default `3`) and a backoff
+  (`agentic.c7.client.technical-retry-timeout-ms`, default `30000`ms); only once the retries are
+  exhausted do they become a Camunda **incident**. Deterministic parse failures
+  (`IllegalStateException` from an unparseable LLM response) are treated as non-retryable and become
+  an incident immediately. Set `technical-retries: 0` to restore fail-immediately behaviour.
 - **Business failures** (`LLM_INPUT_MISSING`, `LLM_INPUT_BLOB_UNREADABLE`, `AGENTIC_NO_TOOL`,
   `LLM_TOOLCALL_MISSING`) are surfaced according to `agentic.c7.business-error-mode`:
 
@@ -264,11 +337,11 @@ design discussions are welcome (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 
   The interesting part is the **receive** side: aggregating N tool results (one message correlation
   per instance) back into a single history update before looping back to `llm-agentic`.
-- **Distinct abort reasons for budget limits** — today a limit-triggered stop is signalled via
-  `agenticAbortReason`. Add dedicated flags/codes so a stop caused by the **iteration budget**
-  (`maxIterations`) or the **token budget** (`maxTokens`) can be told apart from a "normal" model-
-  initiated abort. This lets the process branch differently (e.g. escalate on budget exhaustion vs.
-  accept a model-declared no-op).
+- **Document the budget abort codes** — a limit-triggered stop is already signalled with **distinct
+  codes** in `agenticAbortReason`: `max-iterations-exceeded` (iteration budget `maxIterations`) and
+  `max-tokens-exceeded` (token budget `maxTokens`), so a process can already branch differently on
+  budget exhaustion vs. a model-declared no-op. What is still missing is a dedicated documentation
+  section describing these codes and the recommended gateway branching.
 - **Vector DB / RAG integration** — enrich the system prompt (or expose a `retrieve` tool) with
   context fetched from a vector store via Spring AI's `VectorStore` / retrieval-augmented-generation
   support, so the agent can ground its answers in your own documents.
@@ -301,7 +374,7 @@ compile or test).
 
 ## Examples
 
-See the [`camunda7-agentic-examples`](../camunda7-agentic-examples) repository for an end-to-end,
+See the [`camunda7-agentic-examples`](https://github.com/NFehringVHV/camunda7-agentic-examples) repository for an end-to-end,
 runnable setup (`example-process` + `example-worker`).
 
 ## Contributing / Security

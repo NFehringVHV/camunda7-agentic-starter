@@ -14,7 +14,11 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param baseUrl                Camunda REST base URL for fetching external tasks.
  * @param workerId               optional worker id; auto-generated when blank.
  * @param lockDurationMs         default lock duration in milliseconds.
- * @param maxTasks               max tasks fetched per cycle.
+ * @param maxTasks               max tasks fetched (and locked) per cycle. The client processes
+ *                               fetched tasks <em>sequentially</em>, so with slow LLM turns a high
+ *                               value risks the last task's lock expiring before it is processed
+ *                               (double execution). Keep {@code lock >= maxTasks x expected LLM
+ *                               duration}; the default is deliberately low.
  * @param asyncResponseTimeoutMs long-polling timeout in milliseconds.
  * @param agenticTopic           topic name for the agentic turn worker.
  * @param toolCorrelationTopic   topic name for the tool-correlation worker.
@@ -22,18 +26,26 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  * @param username               optional basic-auth user.
  * @param password               optional basic-auth password.
  * @param enabled                whether to start the external-task-client subscriptions.
+ * @param technicalRetries       number of automatic retries for <em>transient</em> technical
+ *                               failures (throttling, 5xx, connection resets, correlation races)
+ *                               before an incident is raised. {@code 0} keeps the old
+ *                               fail-immediately behaviour.
+ * @param technicalRetryTimeoutMs backoff (retry timeout) in milliseconds applied between technical
+ *                               retries.
  */
 @ConfigurationProperties("agentic.c7.client")
 public record ExternalTaskClientProperties(
         @DefaultValue("http://localhost:8080/engine-rest") String baseUrl,
         String workerId,
         @DefaultValue("30000") long lockDurationMs,
-        @DefaultValue("10") int maxTasks,
+        @DefaultValue("2") int maxTasks,
         @DefaultValue("20000") long asyncResponseTimeoutMs,
         @DefaultValue("llm-agentic") String agenticTopic,
         @DefaultValue("agentic-tool-correlation") String toolCorrelationTopic,
         @DefaultValue("300000") long agenticMinLockMs,
         String username,
         String password,
-        @DefaultValue("true") boolean enabled) {
+        @DefaultValue("true") boolean enabled,
+        @DefaultValue("3") int technicalRetries,
+        @DefaultValue("30000") long technicalRetryTimeoutMs) {
 }

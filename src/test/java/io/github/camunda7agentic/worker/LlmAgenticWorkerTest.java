@@ -19,6 +19,7 @@ import org.camunda.bpm.client.task.ExternalTask;
 import org.camunda.bpm.client.task.ExternalTaskService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -29,6 +30,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -52,7 +54,8 @@ class LlmAgenticWorkerTest {
 
     private final LlmAgenticWorker worker = new LlmAgenticWorker(
             bpmnLoader, toolExtractor, systemPromptBuilder, chatService, blobResolver,
-            historyStoreSelector, new WorkerErrorHandler(props), props);
+            historyStoreSelector, new WorkerErrorHandler(props),
+            mock(TechnicalFailureHandler.class), props);
 
     @Test
     void countsIterationAndTokens() {
@@ -182,6 +185,40 @@ class LlmAgenticWorkerTest {
         worker.execute(task, service);
 
         verify(chatService, never()).call(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void persistsHistoryImmediatelyBeforeCompleteOnSuccess() {
+        ExternalTask task = baseTask();
+        ExternalTaskService service = mock(ExternalTaskService.class);
+
+        AgenticOutput out = new AgenticOutput(false, "continue",
+                new AgenticOutput.ToolCall("getWeather", Map.of("location", "Hanover")),
+                null, null, null);
+        when(chatService.call(any(), any(), any(), any(), any()))
+                .thenReturn(new AgenticCallResult(out, 10L, 8L, 2L));
+
+        worker.execute(task, service);
+
+        InOrder inOrder = inOrder(historyStore, service);
+        inOrder.verify(historyStore).persist(eq(task), any(), any());
+        inOrder.verify(service).complete(eq(task), any());
+    }
+
+    @Test
+    void doesNotPersistHistoryWhenBusinessErrorAborts() {
+        ExternalTask task = baseTask();
+        ExternalTaskService service = mock(ExternalTaskService.class);
+
+        // agenticDone=false but no toolCall -> LLM_TOOLCALL_MISSING business error, task not completed.
+        AgenticOutput out = new AgenticOutput(false, "continue", null, null, null, null);
+        when(chatService.call(any(), any(), any(), any(), any()))
+                .thenReturn(new AgenticCallResult(out, 10L, 8L, 2L));
+
+        worker.execute(task, service);
+
+        verify(historyStore, never()).persist(any(), any(), any());
+        verify(service, never()).complete(any(), any());
     }
 
     private ExternalTask baseTask() {

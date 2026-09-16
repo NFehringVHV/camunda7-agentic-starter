@@ -4,9 +4,10 @@
  */
 package io.github.camunda7agentic.agentic;
 
+import io.github.camunda7agentic.config.HistoryReadErrorMode;
+import io.github.camunda7agentic.history.HistoryUnreadableException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
 
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
@@ -20,18 +21,24 @@ import java.util.List;
  * Kept separate from persistence so that all history stores share the exact same wire format,
  * regardless of where the JSON is stored (process variable, byte array, external blob).
  */
-@Component
 public class AgenticHistoryCodec {
 
     private static final Logger log = LoggerFactory.getLogger(AgenticHistoryCodec.class);
 
     private final ObjectMapper objectMapper;
+    private final HistoryReadErrorMode onReadError;
 
-    public AgenticHistoryCodec(ObjectMapper objectMapper) {
+    public AgenticHistoryCodec(ObjectMapper objectMapper, HistoryReadErrorMode onReadError) {
         this.objectMapper = objectMapper;
+        this.onReadError = onReadError;
     }
 
-    /** Parses the history JSON; returns a new mutable list on {@code null}/blank/unparseable input. */
+    /**
+     * Parses the history JSON. Returns a new mutable list for {@code null}/blank input ("no history
+     * yet"). If the input is present but unparseable, the behaviour depends on the configured
+     * {@link HistoryReadErrorMode}: {@code FAIL} (default) throws {@link HistoryUnreadableException},
+     * {@code RESET} logs a warning and returns an empty list.
+     */
     public List<AgenticHistoryEntry> read(String json) {
         if (json == null || json.isBlank()) {
             return new ArrayList<>();
@@ -40,8 +47,11 @@ public class AgenticHistoryCodec {
             return objectMapper.readValue(json, new TypeReference<List<AgenticHistoryEntry>>() {
             });
         } catch (JacksonException e) {
-            log.warn("agenticHistory not parseable, starting fresh", e);
-            return new ArrayList<>();
+            if (onReadError == HistoryReadErrorMode.RESET) {
+                log.warn("agenticHistory not parseable, starting fresh (on-read-error=reset)", e);
+                return new ArrayList<>();
+            }
+            throw new HistoryUnreadableException("agenticHistory not parseable", e);
         }
     }
 

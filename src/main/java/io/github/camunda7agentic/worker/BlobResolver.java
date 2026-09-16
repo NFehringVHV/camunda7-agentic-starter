@@ -9,7 +9,6 @@ import org.camunda.bpm.client.task.ExternalTask;
 import org.camunda.bpm.client.task.ExternalTaskService;
 import org.slf4j.Logger;
 import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
 
@@ -21,7 +20,6 @@ import java.nio.charset.StandardCharsets;
  * truncation). This allows inputs above the Camunda {@code varchar(4000)} String variable limit.
  * If no {@link AgenticBlobStore} bean is configured, blob ids cannot be resolved.
  */
-@Component
 public class BlobResolver {
 
     private static final String ERR_INPUT_MISSING = "LLM_INPUT_MISSING";
@@ -81,7 +79,7 @@ public class BlobResolver {
     /**
      * Resolves an <em>optional</em> blob-backed text input (blob wins over inline). Returns
      * {@code null} if neither the inline variable nor the blob id is set. If a blob id is set but the
-     * blob cannot be read, the underlying {@link RuntimeException} propagates &ndash; the calling
+     * blob cannot be read, the underlying {@link RuntimeException} propagates -- the calling
      * worker treats it as a technical incident (a missing prompt blob is a technical defect, not a
      * business branch).
      */

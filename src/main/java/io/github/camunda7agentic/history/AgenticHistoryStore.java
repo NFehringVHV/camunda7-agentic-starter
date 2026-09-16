@@ -15,12 +15,12 @@ import java.util.Map;
  *
  * <p>Three tiers are available:
  * <ol>
- *   <li>{@code inline} &ndash; stores the history JSON in a String process variable
+ *   <li>{@code inline} -- stores the history JSON in a String process variable
  *       ({@value #VAR_HISTORY}). Simplest and Cockpit-readable, but limited by the Camunda
  *       {@code varchar(4000)} String variable size.</li>
- *   <li>{@code camunda-bytearray} &ndash; stores the history as a byte-array/JSON typed variable
+ *   <li>{@code camunda-bytearray} -- stores the history as a byte-array/JSON typed variable
  *       (persisted in {@code ACT_GE_BYTEARRAY}); no 4000-char limit and no external store.</li>
- *   <li>{@code external} &ndash; offloads the history to a user-provided {@link AgenticBlobStore}
+ *   <li>{@code external} -- offloads the history to a user-provided {@link AgenticBlobStore}
  *       and keeps only the blob id ({@value #VAR_HISTORY_BLOB_ID}) in the process.</li>
  * </ol>
  */

@@ -5,7 +5,6 @@
 package io.github.camunda7agentic.camunda;
 
 import org.camunda.bpm.client.task.ExternalTask;
-import org.springframework.stereotype.Component;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -16,8 +15,20 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * <p>The process definition id in Camunda 7 is immutable ({@code key:version:deploymentSuffix}) - a
  * new deployment yields a new id. Therefore the loaded XML is cached per process definition id.
+ *
+ * <p><b>Open points (not currently a problem, tracked for later):</b>
+ * <ul>
+ *   <li><i>Unbounded cache (D1):</i> {@link #xmlCache} never evicts. It is bounded by the number of
+ *       distinct process-definition versions ever seen, so it is harmless for normal deployments,
+ *       but a very long-lived worker against a frequently-redeployed engine would grow it without
+ *       limit. If that ever matters, replace it with a small bounded LRU (configurable size).</li>
+ *   <li><i>Model re-parsed per turn (D2):</i> callers ({@code LlmAgenticWorker},
+ *       {@code AgenticToolCorrelationWorker}) parse the cached XML via
+ *       {@code Bpmn.readModelFromStream(...)} on every external task. Only the XML is cached, not the
+ *       parsed {@code BpmnModelInstance}. This is a CPU cost (~2x per loop iteration), not a bug;
+ *       caching the parsed model / derived tool list per definition id would remove it.</li>
+ * </ul>
  */
-@Component
 public class CamundaBpmnLoader {
 
     private final CamundaRestClient client;
